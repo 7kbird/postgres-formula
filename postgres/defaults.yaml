@@ -19,3 +19,4 @@ postgres:
   pg_hba.conf: salt://postgres/pg_hba.conf
   commands:
     initdb: service postgresql initdb
+  docker_dir_root: /srv/docker/postgres

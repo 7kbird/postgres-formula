@@ -72,6 +72,8 @@ pg_hba.conf:
     - name: {{ postgres.conf_dir }}/pg_hba.conf
     - source: {{ postgres['pg_hba.conf'] }}
     - template: jinja
+    - default:
+        acls: {{ postgres.acls if 'acls' in postgres else {} }}
     - user: postgres
     - group: postgres
     - mode: 644

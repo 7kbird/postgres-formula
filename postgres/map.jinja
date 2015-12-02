@@ -20,3 +20,6 @@
 
 {# merge the actual postgres pillar into the above combined dict #}
 {% set postgres = salt['pillar.get']('postgres', default=lookup, merge=True) %}
+
+{# get postgres docker pillar #}
+{% set dockers = salt['pillar.get']('postgres:dockers', {}) %}
