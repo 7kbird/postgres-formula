@@ -20,3 +20,13 @@ postgres:
   commands:
     initdb: service postgresql initdb
   docker_dir_root: /srv/docker/postgres
+
+docker:
+  port: 5432
+  environment: []
+  users: {}
+  acls: [['host', 'all', 'postgres', '{{ salt['grains.get']('ip4_interfaces:docker0')[0] }}/32', 'trust']]
+  databases: {}
+  db_user: "postgres"
+  db_password: "changeplease"
+  pg_hba.conf: salt://postgres/pg_hba.conf

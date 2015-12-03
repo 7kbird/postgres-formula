@@ -1,9 +1,12 @@
-{% from "postgres/map.jinja" import dockers with context %}
-{% from "postgres/map.jinja" import postgres  with context %}
+{% from "postgres/map.jinja" import postgres with context %}
+{% import_yaml "postgres/defaults.yaml" as defaults %}
 
+{% set dockers  = salt['pillar.get']('postgres:dockers', default={}) %}
 
-{% for name, docker in dockers.items() %}
-
+{% for name in dockers %}
+{% set docker = salt['pillar.get']('postgres:dockers:' ~ name,
+                                  default=defaults.docker,
+                                  merge=True) %}
 {% if docker.conf_dir is defined %}
   {% set conf_dir = docker.conf_dir %}
 {% else %}
@@ -19,6 +22,9 @@ postgres-docker-running_{{ name }}:
   dockerng.running:
     - name: {{ name }}
     - image: {{ docker.image }}
+    - ports:
+      - {{ docker.port }}
+    - environment: {{ docker.environment }}
 {% if 'binds' in docker %}
     - binds: {{ docker.binds }}
 {% else %}
@@ -26,24 +32,60 @@ postgres-docker-running_{{ name }}:
 {% endif %}
 
 pg_hba.conf_docker_{{ name }}:
-  file.managed:
+  file.blockreplace:
     - name: {{ conf_dir }}/pg_hba.conf
     - source: {{ postgres['pg_hba.conf'] }}
     - template: jinja
     - defaults:
-        acls: {{ docker.acls if 'acls' in docker else {} }}
-    - mode: 644
+        acls: {{ docker.acls }}
+    - prepend_if_not_found: True
+    - backup: '.bak'
+    - show_changes: True
     - require:
       - file: postgres-docker_conf_dir_{{ name }}
-    - watch_in:
-      - docker: postgres-docker-running_{{ name }}
+    - watch_in:  # TODO: some docker will change pg_hba.conf and this file cannot be managed
+      - dockerng: postgres-docker-running_{{ name }}
+
+{% if name not in salt['dockerng.list_containers']()  %}
+docker-not-found:
+  test.show_notification:
+    - text: 'docker is not started, postgres cannot connect yet,please retry later'
+{% else %}
+{% set docker_ip = salt['dockerng.inspect_container'](name).NetworkSettings.IPAddress %}
+{% for user_name, user in docker.users.items() %}
+postgres-user-docker-{{ name }}_{{ user_name }}:
+{% if user.get('ensure', 'present') == 'present' %}
+  postgres_user.present:
+    - name: {{ user_name }}
+    - createdb: {{ user.get('createdb', False) }}
+    - createroles: {{ user.get('createroles', False) }}
+    - createuser: {{ user.get('createuser', False) }}
+    - inherit: {{ user.get('inherit', True) }}
+    - replication: {{ user.get('replication', False) }}
+    - password: {{ user.get('password', 'changethis') }}
+    #- user: {{ user.get('runas', 'postgres') }}
+    - superuser: {{ user.get('superuser', False) }}
+    - db_host: {{ docker_ip }}
+    - db_port: {{ docker.port }}
+    - db_user: {{ docker.db_user }}
+    - db_password: {{ docker.db_password }}
+    - require:
+      - dockerng: postgres-docker-running_{{ name }}
+{% else %}
+  postgres_user.absent:
+    - name: {{ user_name }}
+    - user: {{ user.get('runas', 'postgres') }}
+    - db_host: {{ docker_ip }}
+    - db_port: {{ docker.port }}
+    - db_user: {{ docker.db_user }}
+    - db_password: {{ docker.db_password }}
+    - require:
+      - dockerng: postgres-docker-running_{{ name }}
+{% endif %}
 
 {% endfor %}
 
+{% endif %}
 
 
-
-
-
-
-
+{% endfor %}
