@@ -7,11 +7,8 @@
 {% set docker = salt['pillar.get']('postgres:dockers:' ~ name,
                                   default=defaults.docker,
                                   merge=True) %}
-{% if docker.conf_dir is defined %}
-  {% set conf_dir = docker.conf_dir %}
-{% else %}
-  {% set conf_dir = postgres.docker_dir_root ~ '/' ~ name %}
-{% endif %}
+
+{% set conf_dir = docker.get('conf_dir', postgres.docker_dir_root ~ '/' ~ name) %}
 postgres-docker_conf_dir_{{ name }}:
   file.directory:
     - name: {{ conf_dir }}
@@ -25,11 +22,7 @@ postgres-docker-running_{{ name }}:
     - ports:
       - {{ docker.port }}
     - environment: {{ docker.environment }}
-{% if 'binds' in docker %}
-    - binds: {{ docker.binds }}
-{% else %}
-    - binds: {{ conf_dir }}:{{ postgres.conf_dir }}
-{% endif %}
+    - binds: {{ docker.get('binds', conf_dir ~ ':' ~  postgres.conf_dir) }}
 
 pg_hba.conf_docker_{{ name }}:
   file.blockreplace:
@@ -48,12 +41,13 @@ pg_hba.conf_docker_{{ name }}:
 
 {% if name not in salt['dockerng.list_containers']()  %}
 docker-not-found:
-  test.show_notification:
-    - text: 'docker is not started, postgres cannot connect yet,please retry later'
+  test.fail_without_changes:
+    - name: 'docker is not started, postgres cannot connect yet,please retry later'
 {% else %}
 {% set docker_ip = salt['dockerng.inspect_container'](name).NetworkSettings.IPAddress %}
+
 {% for user_name, user in docker.users.items() %}
-postgres-user-docker-{{ name }}_{{ user_name }}:
+postgres-docker-{{ name }}-user-{{ user_name }}:
 {% if user.get('ensure', 'present') == 'present' %}
   postgres_user.present:
     - name: {{ user_name }}
@@ -82,10 +76,31 @@ postgres-user-docker-{{ name }}_{{ user_name }}:
     - require:
       - dockerng: postgres-docker-running_{{ name }}
 {% endif %}
-
 {% endfor %}
 
-{% endif %}
+{% for db_name, db in docker.databases.items() %}
+postgres-db-{{ db_name }}:
+  postgres_database.present:
+    - name: {{ db_name }}
+    - encoding: {{ db.get('encoding', '') }}
+    - lc_ctype: {{ db.get('lc_ctype', '') }}
+    - lc_collate: {{ db.get('lc_collate', '') }}
+    - template: {{ db.get('template', '') }}
+    - owner: {{ db.get('owner', '') }}
+    - user: {{ db.get('runas', '') }}
+    - db_host: {{ docker_ip }}
+    - db_user: {{ docker.db_user }}
+    - db_password: {{ docker.db_password }}
+    - require:
+      - dockerng: postgres-docker-running_{{ name }}
+      {% if db.get('user') %}
+      - postgres_user: postgres-docker-{{ name }}-user-{{ db.get('user') }}
+      {% endif %}
 
+# TODO: schema
+{% endfor %}
+
+
+{% endif %} # wait for docker start
 
 {% endfor %}
