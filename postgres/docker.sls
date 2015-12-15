@@ -9,11 +9,6 @@
                                   merge=True) %}
 
 {% set conf_dir = docker.get('conf_dir', postgres.docker_dir_root ~ '/' ~ name) %}
-postgres-docker_conf_dir_{{ name }}:
-  file.directory:
-    - name: {{ conf_dir }}
-    - makedirs: True
-    - unless: test -f {{ conf_dir }}/PG_VERSION
 
 postgres-docker-running_{{ name }}:
   dockerng.running:
@@ -24,7 +19,14 @@ postgres-docker-running_{{ name }}:
     - environment: {{ docker.environment }}
     - binds: {{ docker.get('binds', conf_dir ~ ':' ~  postgres.conf_dir) }}
 
-pg_hba.conf_docker_{{ name }}:
+postgres-docker-restart_{{ name }}:
+  module.wait:
+    - name: dockerng.restart
+    - opts: '{{ name }}'
+    - onchanges:
+      - file: pg_hba.conf_docker_{{ name }}
+
+pg_hba.conf_docker_{{ name }}: # TODO: some docker will change pg_hba.conf and cannot be file.managed
   file.blockreplace:
     - name: {{ conf_dir }}/pg_hba.conf
     - source: {{ postgres['pg_hba.conf'] }}
@@ -35,9 +37,7 @@ pg_hba.conf_docker_{{ name }}:
     - backup: '.bak'
     - show_changes: True
     - require:
-      - file: postgres-docker_conf_dir_{{ name }}
-    - watch_in:  # TODO: some docker will change pg_hba.conf and this file cannot be managed
-      - dockerng: postgres-docker-running_{{ name }}
+      - dockerng: {{ name }}
 
 {% if name not in salt['dockerng.list_containers']()  %}
 docker-not-found:
