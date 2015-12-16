@@ -2,6 +2,7 @@
 {% import_yaml "postgres/defaults.yaml" as defaults %}
 
 {% set dockers  = salt['pillar.get']('postgres:dockers', default={}) %}
+{% set images = [] %}
 
 {% for name in dockers %}
 {% set docker = salt['pillar.get']('postgres:dockers:' ~ name,
@@ -9,15 +10,19 @@
                                   merge=True) %}
 
 {% set conf_dir = docker.get('conf_dir', postgres.docker_dir_root ~ '/' ~ name) %}
+{% set image = docker.image if ':' in docker.image else docker.image ~ ':latest' %}
+{% do images.append(image) if image not in images %}
 
 postgres-docker-running_{{ name }}:
   dockerng.running:
     - name: {{ name }}
-    - image: {{ docker.image }}
+    - image: {{ image }}
     - ports:
       - {{ docker.port }}
     - environment: {{ docker.environment }}
     - binds: {{ docker.get('binds', conf_dir ~ ':' ~  postgres.conf_dir) }}
+    - require:
+      - cmd: postgres-docker-image_{{ image }}
 
 postgres-docker-restart_{{ name }}:
   module.wait:
@@ -100,7 +105,13 @@ postgres-db-{{ db_name }}:
 # TODO: schema
 {% endfor %}
 
-
 {% endif %} # wait for docker start
 
+{% endfor %}
+
+{% for image in images %}
+postgres-docker-image_{{ image }}:
+  cmd.run:
+    - name: docker pull {{ image }}
+    - unless: '[ $(docker images -q {{ image }}) ]'
 {% endfor %}
