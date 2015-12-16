@@ -80,6 +80,7 @@ postgres-docker-{{ name }}-user-{{ user_name }}:
     - db_password: {{ docker.db_password }}
     - require:
       - dockerng: postgres-docker-running_{{ name }}
+      - module: postgres-docker-restart_{{ name }}
 {% endif %}
 {% endfor %}
 
@@ -101,7 +102,7 @@ postgres-db-{{ db_name }}:
       {% if db.get('user') %}
       - postgres_user: postgres-docker-{{ name }}-user-{{ db.get('user') }}
       {% endif %}
-
+      - module: postgres-docker-restart_{{ name }}
 # TODO: schema
 {% endfor %}
 
