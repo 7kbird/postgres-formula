@@ -53,3 +53,7 @@ Builds and runs test from scratch
 
 Gives you ssh to the vagrant machine for manual testing
 
+TODO:
+======
+
+Use temporary docker to generate database and users to prevent docker restart
